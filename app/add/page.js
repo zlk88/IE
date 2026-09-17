@@ -13,6 +13,20 @@ export default function AddProcess() {
   });
   const [preview, setPreview] = useState('');
   const [error, setError] = useState('');
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.isAdmin) {
+          router.replace('/login');
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => router.replace('/login'));
+  }, [router]);
 
   useEffect(() => {
     const sec = parseTimeInput(form.work_seconds);
@@ -37,9 +51,16 @@ export default function AddProcess() {
       body: JSON.stringify({ ...form, work_seconds }),
     });
     const data = await res.json();
+    if (res.status === 401) {
+      alert('登录已过期，请重新登录');
+      router.replace('/login');
+      return;
+    }
     if (!res.ok) { setError(data.error || '添加失败'); return; }
     router.push('/');
   }
+
+  if (checking) return <div className="container"><div className="card">验证权限中...</div></div>;
 
   return (
     <div className="container" style={{ maxWidth: 600, margin: '40px auto' }}>
