@@ -1,11 +1,20 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import sql from '@/lib/db';
+import { verifyToken, getCookieName } from '@/lib/auth';
 import {
   DAILY_SECONDS, HOURLY_RATE, formatSeconds, secondsToHours,
   calculateDailyOutput, calculateLaborCost,
 } from '@/lib/utils';
 
 export default async function DetailPage({ params }) {
+  const cookieStore = cookies();
+  const token = cookieStore.get(getCookieName())?.value;
+  if (!verifyToken(token)) {
+    redirect('/login');
+  }
+
   const id = parseInt(params.id, 10);
   const rows = await sql`SELECT * FROM processes1 WHERE id = ${id}`;
   if (rows.length === 0) {
