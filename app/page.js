@@ -2,20 +2,38 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   DAILY_SECONDS, HOURLY_RATE, formatSeconds, secondsToHours,
   calculateDailyOutput, calculateLaborCost,
 } from '@/lib/utils';
 
 export default function Home() {
+  const router = useRouter();
   const [processes, setProcesses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [expandedStyles, setExpandedStyles] = useState({});
   const [expandedAnalysisStyles, setExpandedAnalysisStyles] = useState({});
   const [selected, setSelected] = useState({});
   const [analysisResult, setAnalysisResult] = useState(null);
 
-  useEffect(() => { fetchProcesses(); }, []);
+  useEffect(() => {
+    checkAuth();
+    fetchProcesses();
+  }, []);
+
+  async function checkAuth() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      setIsAdmin(!!data.isAdmin);
+    } catch {
+      setIsAdmin(false);
+    }
+    setAuthChecked(true);
+  }
 
   async function fetchProcesses() {
     setLoading(true);
@@ -28,6 +46,13 @@ export default function Home() {
       setExpandedAnalysisStyles({ [firstStyle]: true });
     }
     setLoading(false);
+  }
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setIsAdmin(false);
+    router.push('/');
+    router.refresh();
   }
 
   const styleGroups = useMemo(() => {
@@ -123,75 +148,112 @@ export default function Home() {
 
   async function handleDelete(id, name) {
     if (!confirm(`确定要删除【${name}】这个工艺吗？`)) return;
-    await fetch(`/api/processes/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/processes/${id}`, { method: 'DELETE' });
+    if (res.status === 401) {
+      alert('登录已过期，请重新登录');
+      setIsAdmin(false);
+      return;
+    }
     fetchProcesses();
   }
 
-  if (loading) return <div className="container"><div className="card">加载中...</div></div>;
+  if (!authChecked || loading) {
+    return <div className="container"><div className="card">加载中...</div></div>;
+  }
 
   return (
     <div className="container">
       <div className="header">
         <h1>IE工时管理系统</h1>
-        <p className="subtitle">工艺工时管理与生产分析系统（支持工艺次数设置）</p>
+        <p className="subtitle">
+          {isAdmin ? '工艺工时管理与生产分析系统（管理员模式）' : '工艺工时分析系统'}
+        </p>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 15 }}>
+          {isAdmin ? (
+            <button
+              onClick={handleLogout}
+              className="btn"
+              style={{ background: '#6c757d', color: 'white', padding: '8px 20px' }}
+            >
+              🚪 退出登录
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="btn btn-primary"
+              style={{ padding: '8px 20px' }}
+            >
+              🔐 管理员登录
+            </Link>
+          )}
+        </div>
+
         <div className="system-info">
           <div className="info-item"><div className="info-label">每日工作时间</div><div className="info-value">{formatSeconds(DAILY_SECONDS)}</div></div>
           <div className="info-item"><div className="info-label">时薪标准</div><div className="info-value">{HOURLY_RATE} 元/小时</div></div>
           <div className="info-item"><div className="info-label">工艺总数</div><div className="info-value">{processes.length} 个</div></div>
-          <div className="info-item"><div className="info-label">已测试工艺</div><div className="info-value">{testedCount} 个</div></div>
+          {isAdmin && (
+            <div className="info-item"><div className="info-label">已测试工艺</div><div className="info-value">{testedCount} 个</div></div>
+          )}
         </div>
       </div>
 
-      <div className="main-content">
-        <div className="card">
-          <h2>工艺列表（按款式分组）</h2>
-          <div className="analysis-controls">
-            <button className="list-control-btn" onClick={() => toggleAllStyles(true)}>📖 展开所有款式</button>
-            <button className="list-control-btn" onClick={() => toggleAllStyles(false)}>📕 折叠所有款式</button>
-          </div>
-          <div className="process-list">
-            {Object.entries(styleGroups).map(([style, list]) => (
-              <div className="style-group" key={style}>
-                <div className="style-header" onClick={() => toggleStyle(style)}>
-                  <div className="style-title">{style}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
-                    <span className="style-count">{list.length} 个工艺</span>
-                    <span>{expandedStyles[style] ? '▼' : '▶'}</span>
+      <div
+        className="main-content"
+        style={{ gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr' }}
+      >
+        {isAdmin && (
+          <div className="card">
+            <h2>工艺列表（按款式分组）</h2>
+            <div className="analysis-controls">
+              <button className="list-control-btn" onClick={() => toggleAllStyles(true)}>📖 展开所有款式</button>
+              <button className="list-control-btn" onClick={() => toggleAllStyles(false)}>📕 折叠所有款式</button>
+            </div>
+            <div className="process-list">
+              {Object.entries(styleGroups).map(([style, list]) => (
+                <div className="style-group" key={style}>
+                  <div className="style-header" onClick={() => toggleStyle(style)}>
+                    <div className="style-title">{style}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+                      <span className="style-count">{list.length} 个工艺</span>
+                      <span>{expandedStyles[style] ? '▼' : '▶'}</span>
+                    </div>
                   </div>
-                </div>
-                <div className={`style-processes ${expandedStyles[style] ? 'expanded' : ''}`}>
-                  {list.map((p) => (
-                    <div className="process-item" key={p.id}>
-                      <div className="process-header">
-                        <div>
-                          <div className="process-name">{p.process_name} <span className="process-id">#{p.id}</span></div>
-                          <div style={{ marginTop: 5 }}>
-                            <span className="style-count" style={{ marginRight: 5 }}>{p.style}</span>
-                            {p.is_tested ? <span className="tested-badge">已测试</span> : <span className="untested-badge">未测试</span>}
+                  <div className={`style-processes ${expandedStyles[style] ? 'expanded' : ''}`}>
+                    {list.map((p) => (
+                      <div className="process-item" key={p.id}>
+                        <div className="process-header">
+                          <div>
+                            <div className="process-name">{p.process_name} <span className="process-id">#{p.id}</span></div>
+                            <div style={{ marginTop: 5 }}>
+                              <span className="style-count" style={{ marginRight: 5 }}>{p.style}</span>
+                              {p.is_tested ? <span className="tested-badge">已测试</span> : <span className="untested-badge">未测试</span>}
+                            </div>
+                          </div>
+                          <div className="process-time">
+                            <span className="process-seconds">{p.work_seconds} 秒</span>
+                            <span className="process-formatted">{formatSeconds(p.work_seconds)}</span>
                           </div>
                         </div>
-                        <div className="process-time">
-                          <span className="process-seconds">{p.work_seconds} 秒</span>
-                          <span className="process-formatted">{formatSeconds(p.work_seconds)}</span>
+                        {p.specification && <div className="process-spec">📏 规格: {p.specification}</div>}
+                        {p.description && <div className="process-description">📝 {p.description}</div>}
+                        <div className="actions">
+                          <Link href={`/edit/${p.id}`} className="btn btn-secondary">✏️ 编辑</Link>
+                          <Link href={`/detail/${p.id}`} className="btn btn-primary">👁️ 详情</Link>
+                          <button className="btn btn-danger" onClick={() => handleDelete(p.id, p.process_name)}>🗑️ 删除</button>
                         </div>
                       </div>
-                      {p.specification && <div className="process-spec">📏 规格: {p.specification}</div>}
-                      {p.description && <div className="process-description">📝 {p.description}</div>}
-                      <div className="actions">
-                        <Link href={`/edit/${p.id}`} className="btn btn-secondary">✏️ 编辑</Link>
-                        <Link href={`/detail/${p.id}`} className="btn btn-primary">👁️ 详情</Link>
-                        <button className="btn btn-danger" onClick={() => handleDelete(p.id, p.process_name)}>🗑️ 删除</button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div style={{ marginTop: 20, textAlign: 'center' }}>
+              <Link href="/add" className="btn btn-primary" style={{ padding: '10px 30px', fontSize: 16 }}>➕ 添加新工艺</Link>
+            </div>
           </div>
-          <div style={{ marginTop: 20, textAlign: 'center' }}>
-            <Link href="/add" className="btn btn-primary" style={{ padding: '10px 30px', fontSize: 16 }}>➕ 添加新工艺</Link>
-          </div>
-        </div>
+        )}
 
         <div className="card">
           <h2>多工艺分析 <span style={{ fontSize: 14, color: '#ff9800' }}>支持设置工艺次数</span></h2>
