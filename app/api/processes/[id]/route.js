@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { isAuthed } from '@/lib/auth';
 
 export async function GET(request, { params }) {
   try {
@@ -13,6 +14,9 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  if (!isAuthed(request)) {
+    return NextResponse.json({ error: '未登录，无权操作' }, { status: 401 });
+  }
   try {
     const id = parseInt(params.id, 10);
     const body = await request.json();
@@ -36,6 +40,9 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  if (!isAuthed(request)) {
+    return NextResponse.json({ error: '未登录，无权操作' }, { status: 401 });
+  }
   try {
     const id = parseInt(params.id, 10);
     await sql`DELETE FROM processes1 WHERE id = ${id}`;
