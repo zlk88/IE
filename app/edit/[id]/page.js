@@ -13,11 +13,21 @@ export default function EditProcess() {
   const [form, setForm] = useState(null);
   const [preview, setPreview] = useState('');
   const [error, setError] = useState('');
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/processes/${id}`)
+    fetch('/api/auth/me')
       .then((r) => r.json())
       .then((data) => {
+        if (!data.isAdmin) {
+          router.replace('/login');
+          return;
+        }
+        setChecking(false);
+        return fetch(`/api/processes/${id}`).then((r) => r.json());
+      })
+      .then((data) => {
+        if (!data) return;
         if (data.error) { setError(data.error); return; }
         setForm({
           process_name: data.process_name,
@@ -27,8 +37,9 @@ export default function EditProcess() {
           work_seconds: formatTimeInput(data.work_seconds),
           is_tested: data.is_tested,
         });
-      });
-  }, [id]);
+      })
+      .catch(() => router.replace('/login'));
+  }, [id, router]);
 
   useEffect(() => {
     if (!form) return;
@@ -53,11 +64,17 @@ export default function EditProcess() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, work_seconds }),
     });
+    if (res.status === 401) {
+      alert('登录已过期，请重新登录');
+      router.replace('/login');
+      return;
+    }
     const data = await res.json();
     if (!res.ok) { setError(data.error || '更新失败'); return; }
     router.push('/');
   }
 
+  if (checking) return <div className="container"><div className="card">验证权限中...</div></div>;
   if (!form) return <div className="container"><div className="card">{error || '加载中...'}</div></div>;
 
   return (
