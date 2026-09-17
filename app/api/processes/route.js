@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { isAuthed } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -11,6 +12,9 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  if (!isAuthed(request)) {
+    return NextResponse.json({ error: '未登录，无权操作' }, { status: 401 });
+  }
   try {
     const body = await request.json();
     const { process_name, style, specification, description, work_seconds, is_tested } = body;
